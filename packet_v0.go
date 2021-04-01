@@ -33,7 +33,7 @@ func (packet *PacketV0) Decode() error {
 
 	var checksumSize int
 	var payloadSize uint16
-	var typeFlags uint16
+	var typeFlags uint8
 
 	if packet.Sender().Server().ChecksumVersion() == 0 {
 		checksumSize = 4
@@ -46,7 +46,7 @@ func (packet *PacketV0) Decode() error {
 	packet.SetSource(stream.ReadUInt8())
 	packet.SetDestination(stream.ReadUInt8())
 
-	typeFlags = stream.ReadUInt16LE()
+	typeFlags = stream.ReadUInt8()
 
 	packet.SetSessionID(stream.ReadUInt8())
 	packet.SetSignature(stream.ReadBytesNext(4))
@@ -64,6 +64,7 @@ func (packet *PacketV0) Decode() error {
 		return errors.New("[PRUDPv0] Packet type not valid type")
 	}
 
+	fmt.Printf("Type %v\n", packet.Type())
 	if packet.Type() == SynPacket || packet.Type() == ConnectPacket {
 		if len(packet.Data()[stream.ByteOffset():]) < 4 {
 			return errors.New("[PRUDPv0] Packet specific data not large enough for connection signature")
@@ -80,6 +81,8 @@ func (packet *PacketV0) Decode() error {
 		packet.SetFragmentID(stream.ReadUInt8())
 	}
 
+	fmt.Printf("Fragment id %v\n", packet.fragmentID)
+
 	if packet.HasFlag(FlagHasSize) {
 		if len(packet.Data()[stream.ByteOffset():]) < 2 {
 			return errors.New("[PRUDPv0] Packet specific data not large enough for payload size")
@@ -87,9 +90,11 @@ func (packet *PacketV0) Decode() error {
 
 		payloadSize = stream.ReadUInt16LE()
 	} else {
+		fmt.Println(checksumSize)
 		payloadSize = uint16(len(packet.data) - int(stream.ByteOffset()) - checksumSize)
 	}
 
+	fmt.Println(payloadSize)
 	if payloadSize > 0 {
 		if len(packet.Data()[stream.ByteOffset():]) < int(payloadSize) {
 			return errors.New("[PRUDPv0] Packet data length less than payload length")
@@ -102,8 +107,9 @@ func (packet *PacketV0) Decode() error {
 		if packet.Type() == DataPacket {
 			ciphered := make([]byte, payloadSize)
 			packet.Sender().Decipher().XORKeyStream(ciphered, payloadCrypted)
-
-			request, err := NewRMCRequest(ciphered)
+			newArray := make([]byte, len(ciphered)-1)
+			copy(newArray[0:len(ciphered)-1], ciphered[1:len(ciphered)-1])
+			request, err := NewRMCRequest(newArray)
 
 			if err != nil {
 				return errors.New("[PRUDPv0] Error parsing RMC request: " + err.Error())
@@ -158,7 +164,7 @@ func (packet *PacketV0) Bytes() []byte {
 		}
 	}
 
-	var typeFlags uint16
+	var typeFlags uint8
 	if packet.Sender().Server().FlagsVersion() == 0 {
 		typeFlags = packet.Type() | packet.Flags()<<3
 	} else {
@@ -170,7 +176,7 @@ func (packet *PacketV0) Bytes() []byte {
 
 	stream.WriteUInt8(packet.Source())
 	stream.WriteUInt8(packet.Destination())
-	stream.WriteUInt16LE(typeFlags)
+	stream.WriteUInt8(typeFlags)
 	stream.WriteUInt8(packet.SessionID())
 	stream.Grow(int64(len(packetSignature)))
 	stream.WriteBytesNext(packetSignature)

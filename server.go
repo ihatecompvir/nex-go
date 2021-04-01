@@ -2,7 +2,6 @@ package nex
 
 import (
 	"fmt"
-	"math/rand"
 	"net"
 	"runtime"
 )
@@ -15,7 +14,6 @@ type Server struct {
 	clients               map[string]*Client
 	genericEventHandles   map[string][]func(PacketInterface)
 	prudpV0EventHandles   map[string][]func(*PacketV0)
-	prudpV1EventHandles   map[string][]func(*PacketV1)
 	accessKey             string
 	prudpVersion          int
 	nexVersion            int
@@ -99,18 +97,14 @@ func (server *Server) handleSocketMessage() error {
 
 	var packet PacketInterface
 
-	if server.PrudpVersion() == 0 {
-		packet, err = NewPacketV0(client, data)
-	} else {
-		packet, err = NewPacketV1(client, data)
-	}
+	packet, err = NewPacketV0(client, data)
 
 	if err != nil {
 		fmt.Println(err)
 		return nil
 	}
 
-	if packet.HasFlag(FlagAck) || packet.HasFlag(FlagMultiAck) {
+	if packet.HasFlag(FlagAck) {
 		return nil
 	}
 
@@ -152,8 +146,6 @@ func (server *Server) On(event string, handler interface{}) {
 		server.genericEventHandles[event] = append(server.genericEventHandles[event], handler.(func(PacketInterface)))
 	case func(*PacketV0):
 		server.prudpV0EventHandles[event] = append(server.prudpV0EventHandles[event], handler.(func(*PacketV0)))
-	case func(*PacketV1):
-		server.prudpV1EventHandles[event] = append(server.prudpV1EventHandles[event], handler.(func(*PacketV1)))
 	}
 }
 
@@ -175,12 +167,6 @@ func (server *Server) Emit(event string, packet interface{}) {
 		for i := 0; i < len(eventName); i++ {
 			handler := eventName[i]
 			go handler(packet.(*PacketV0))
-		}
-	case *PacketV1:
-		eventName := server.prudpV1EventHandles[event]
-		for i := 0; i < len(eventName); i++ {
-			handler := eventName[i]
-			go handler(packet.(*PacketV1))
 		}
 	}
 }
@@ -208,11 +194,7 @@ func (server *Server) Kick(client *Client) {
 func (server *Server) SendPing(client *Client) {
 	var pingPacket PacketInterface
 
-	if server.PrudpVersion() == 0 {
-		pingPacket, _ = NewPacketV0(client, nil)
-	} else {
-		pingPacket, _ = NewPacketV1(client, nil)
-	}
+	pingPacket, _ = NewPacketV0(client, nil)
 
 	pingPacket.SetSource(0xA1)
 	pingPacket.SetDestination(0xAF)
@@ -229,11 +211,7 @@ func (server *Server) AcknowledgePacket(packet PacketInterface, payload []byte) 
 
 	var ackPacket PacketInterface
 
-	if server.PrudpVersion() == 0 {
-		ackPacket, _ = NewPacketV0(sender, nil)
-	} else {
-		ackPacket, _ = NewPacketV1(sender, nil)
-	}
+	ackPacket, _ = NewPacketV0(sender, nil)
 
 	ackPacket.SetSource(packet.Destination())
 	ackPacket.SetDestination(packet.Source())
@@ -244,59 +222,6 @@ func (server *Server) AcknowledgePacket(packet PacketInterface, payload []byte) 
 
 	if payload != nil {
 		ackPacket.SetPayload(payload)
-	}
-
-	if server.PrudpVersion() == 1 {
-		packet := packet.(*PacketV1)
-		ackPacket := ackPacket.(*PacketV1)
-
-		ackPacket.SetVersion(1)
-		ackPacket.SetSubstreamID(0)
-		ackPacket.AddFlag(FlagHasSize)
-
-		if packet.Type() == SynPacket {
-			serverConnectionSignature := make([]byte, 16)
-			rand.Read(serverConnectionSignature)
-
-			ackPacket.Sender().SetServerConnectionSignature(serverConnectionSignature)
-
-			ackPacket.SetSupportedFunctions(packet.SupportedFunctions())
-			ackPacket.SetMaximumSubstreamID(0)
-
-			ackPacket.SetConnectionSignature(serverConnectionSignature)
-		}
-
-		if packet.Type() == ConnectPacket {
-
-			ackPacket.SetConnectionSignature(make([]byte, 16))
-
-			ackPacket.SetSupportedFunctions(packet.SupportedFunctions())
-
-			ackPacket.SetInitialSequenceID(10000)
-
-			ackPacket.SetMaximumSubstreamID(0)
-		}
-
-		if packet.Type() == DataPacket {
-			// Aggregate acknowledgement
-			ackPacket.ClearFlag(FlagAck)
-			ackPacket.AddFlag(FlagMultiAck)
-
-			payloadStream := NewStreamOut(server)
-
-			// New version
-			if server.NexVersion() >= 2 {
-				ackPacket.SetSequenceID(0)
-				ackPacket.SetSubstreamID(1)
-
-				// I'm lazy so just ack one packet
-				payloadStream.WriteUInt8(0)                      // substream ID
-				payloadStream.WriteUInt8(0)                      // length of additional sequence ids
-				payloadStream.WriteUInt16LE(packet.SequenceID()) // Sequence id
-			}
-
-			ackPacket.SetPayload(payloadStream.Bytes())
-		}
 	}
 
 	data := ackPacket.Bytes()
@@ -445,7 +370,6 @@ func NewServer() *Server {
 	server := &Server{
 		genericEventHandles:   make(map[string][]func(PacketInterface)),
 		prudpV0EventHandles:   make(map[string][]func(*PacketV0)),
-		prudpV1EventHandles:   make(map[string][]func(*PacketV1)),
 		clients:               make(map[string]*Client),
 		prudpVersion:          1,
 		fragmentSize:          1300,

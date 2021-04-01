@@ -1,6 +1,9 @@
 package nex
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 // RMCRequest represets a RMC request
 type RMCRequest struct {
@@ -37,9 +40,10 @@ func NewRMCRequest(data []byte) (RMCRequest, error) {
 	}
 
 	stream := NewStreamIn(data, nil)
-
 	size := int(stream.ReadUInt32LE())
 
+	fmt.Println(size)
+	fmt.Println(data)
 	if size != (len(data) - 4) {
 		return RMCRequest{}, errors.New("[RMC] Data size does not match")
 	}

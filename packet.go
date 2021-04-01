@@ -7,8 +7,8 @@ type Packet struct {
 	version             uint8
 	source              uint8
 	destination         uint8
-	packetType          uint16
-	flags               uint16
+	packetType          uint8
+	flags               uint8
 	sessionID           uint8
 	signature           []byte
 	sequenceID          uint16
@@ -60,37 +60,37 @@ func (packet *Packet) Destination() uint8 {
 }
 
 // SetType sets the packet type
-func (packet *Packet) SetType(packetType uint16) {
+func (packet *Packet) SetType(packetType uint8) {
 	packet.packetType = packetType
 }
 
 // Type returns the packet type
-func (packet *Packet) Type() uint16 {
+func (packet *Packet) Type() uint8 {
 	return packet.packetType
 }
 
 // SetFlags sets the packet flag bitmask
-func (packet *Packet) SetFlags(bitmask uint16) {
+func (packet *Packet) SetFlags(bitmask uint8) {
 	packet.flags = bitmask
 }
 
 // Flags returns the packet flag bitmask
-func (packet *Packet) Flags() uint16 {
+func (packet *Packet) Flags() uint8 {
 	return packet.flags
 }
 
 // HasFlag checks if the packet has the given flag
-func (packet *Packet) HasFlag(flag uint16) bool {
+func (packet *Packet) HasFlag(flag uint8) bool {
 	return packet.flags&flag != 0
 }
 
 // AddFlag adds the given flag to the packet flag bitmask
-func (packet *Packet) AddFlag(flag uint16) {
+func (packet *Packet) AddFlag(flag uint8) {
 	packet.flags |= flag
 }
 
 // ClearFlag removes the given flag from the packet bitmask
-func (packet *Packet) ClearFlag(flag uint16) {
+func (packet *Packet) ClearFlag(flag uint8) {
 	packet.flags &^= flag
 }
 

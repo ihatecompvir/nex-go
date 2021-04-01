@@ -9,13 +9,13 @@ type PacketInterface interface {
 	Source() uint8
 	SetDestination(destination uint8)
 	Destination() uint8
-	SetType(packetType uint16)
-	Type() uint16
-	SetFlags(bitmask uint16)
-	Flags() uint16
-	HasFlag(flag uint16) bool
-	AddFlag(flag uint16)
-	ClearFlag(flag uint16)
+	SetType(packetType uint8)
+	Type() uint8
+	SetFlags(bitmask uint8)
+	Flags() uint8
+	HasFlag(flag uint8) bool
+	AddFlag(flag uint8)
+	ClearFlag(flag uint8)
 	SetSessionID(sessionID uint8)
 	SessionID() uint8
 	SetSignature(signature []byte)
