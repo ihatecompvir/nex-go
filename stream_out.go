@@ -46,6 +46,15 @@ func (stream *StreamOut) WriteString(str string) {
 	stream.WriteBytesNext([]byte(str))
 }
 
+func (stream *StreamOut) WriteBufferString(str string) {
+	str = str + "\x00"
+	strLength := len(str)
+
+	stream.Grow(int64(strLength))
+	stream.WriteUInt32LE(uint32(strLength))
+	stream.WriteBytesNext([]byte(str))
+}
+
 // WriteBuffer writes a NEX Buffer type
 func (stream *StreamOut) WriteBuffer(data []byte) {
 	dataLength := len(data)
@@ -125,5 +134,14 @@ func NewStreamOut(server *Server) *StreamOut {
 	return &StreamOut{
 		Buffer: crunch.NewBuffer(),
 		Server: server,
+	}
+}
+
+// NewStreamIn returns a new NEX input stream
+func NewStream() *StreamOut {
+	var array []byte
+	return &StreamOut{
+		Buffer: crunch.NewBuffer(array),
+		Server: nil,
 	}
 }

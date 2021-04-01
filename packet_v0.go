@@ -35,11 +35,7 @@ func (packet *PacketV0) Decode() error {
 	var payloadSize uint16
 	var typeFlags uint8
 
-	if packet.Sender().Server().ChecksumVersion() == 0 {
-		checksumSize = 4
-	} else {
-		checksumSize = 1
-	}
+	checksumSize = 1
 
 	stream := NewStreamIn(packet.Data(), packet.Sender().Server())
 
@@ -52,19 +48,13 @@ func (packet *PacketV0) Decode() error {
 	packet.SetSignature(stream.ReadBytesNext(4))
 	packet.SetSequenceID(stream.ReadUInt16LE())
 
-	if packet.Sender().Server().FlagsVersion() == 0 {
-		packet.SetType(typeFlags & 7)
-		packet.SetFlags(typeFlags >> 3)
-	} else {
-		packet.SetType(typeFlags & 0xF)
-		packet.SetFlags(typeFlags >> 4)
-	}
+	packet.SetType(typeFlags & 7)
+	packet.SetFlags(typeFlags >> 3)
 
 	if _, ok := validTypes[packet.Type()]; !ok {
 		return errors.New("[PRUDPv0] Packet type not valid type")
 	}
 
-	fmt.Printf("Type %v\n", packet.Type())
 	if packet.Type() == SynPacket || packet.Type() == ConnectPacket {
 		if len(packet.Data()[stream.ByteOffset():]) < 4 {
 			return errors.New("[PRUDPv0] Packet specific data not large enough for connection signature")
@@ -81,8 +71,6 @@ func (packet *PacketV0) Decode() error {
 		packet.SetFragmentID(stream.ReadUInt8())
 	}
 
-	fmt.Printf("Fragment id %v\n", packet.fragmentID)
-
 	if packet.HasFlag(FlagHasSize) {
 		if len(packet.Data()[stream.ByteOffset():]) < 2 {
 			return errors.New("[PRUDPv0] Packet specific data not large enough for payload size")
@@ -90,11 +78,9 @@ func (packet *PacketV0) Decode() error {
 
 		payloadSize = stream.ReadUInt16LE()
 	} else {
-		fmt.Println(checksumSize)
 		payloadSize = uint16(len(packet.data) - int(stream.ByteOffset()) - checksumSize)
 	}
 
-	fmt.Println(payloadSize)
 	if payloadSize > 0 {
 		if len(packet.Data()[stream.ByteOffset():]) < int(payloadSize) {
 			return errors.New("[PRUDPv0] Packet data length less than payload length")
@@ -104,12 +90,14 @@ func (packet *PacketV0) Decode() error {
 
 		packet.SetPayload(payloadCrypted)
 
-		if packet.Type() == DataPacket {
+		if packet.Type() == DataPacket || packet.Type() == DisconnectPacket {
 			ciphered := make([]byte, payloadSize)
+
 			packet.Sender().Decipher().XORKeyStream(ciphered, payloadCrypted)
 			newArray := make([]byte, len(ciphered)-1)
 			copy(newArray[0:len(ciphered)-1], ciphered[1:len(ciphered)-1])
 			request, err := NewRMCRequest(newArray)
+			fmt.Println(newArray)
 
 			if err != nil {
 				return errors.New("[PRUDPv0] Error parsing RMC request: " + err.Error())
@@ -158,18 +146,10 @@ func (packet *PacketV0) Bytes() []byte {
 				packet.SetPayload(encrypted)
 			}
 		}
-
-		if !packet.HasFlag(FlagHasSize) {
-			packet.AddFlag(FlagHasSize)
-		}
 	}
 
 	var typeFlags uint8
-	if packet.Sender().Server().FlagsVersion() == 0 {
-		typeFlags = packet.Type() | packet.Flags()<<3
-	} else {
-		typeFlags = packet.Type() | packet.Flags()<<4
-	}
+	typeFlags = packet.Type()&7 | packet.Flags()<<3
 
 	stream := NewStreamOut(packet.Sender().Server())
 	packetSignature := packet.calculateSignature()
@@ -209,60 +189,34 @@ func (packet *PacketV0) Bytes() []byte {
 }
 
 func (packet *PacketV0) calculateSignature() []byte {
-	// Friends server handles signatures differently, so check for the Friends server access key
-	if packet.Sender().Server().AccessKey() == "ridfebb9" {
-		if packet.Type() == DataPacket {
-			payload := packet.Payload()
-
-			if payload == nil || len(payload) <= 0 {
-				signature := NewStreamOut(packet.Sender().Server())
-				signature.WriteUInt32LE(0x12345678)
-
-				return signature.Bytes()
-			}
-
-			key := packet.Sender().SignatureKey()
-			cipher := hmac.New(md5.New, key)
-			cipher.Write(payload)
-
-			return cipher.Sum(nil)[:4]
+	if packet.Type() == DataPacket || packet.Type() == DisconnectPacket {
+		payload := NewStreamOut(packet.Sender().Server())
+		sessionKey := packet.Sender().SessionKey()
+		if sessionKey != nil {
+			payload.Grow(int64(len(sessionKey)))
+			payload.WriteBytesNext(sessionKey)
+		}
+		payload.WriteUInt16LE(packet.sequenceID)
+		payload.Grow(1)
+		payload.WriteByteNext(packet.fragmentID)
+		pktpay := packet.Payload()
+		if pktpay != nil && len(pktpay) > 0 {
+			payload.Grow(int64(len(pktpay)))
+			payload.WriteBytesNext(pktpay)
 		}
 
+		key := packet.Sender().SignatureKey()
+		cipher := hmac.New(md5.New, key)
+		cipher.Write(packet.Sender().ClientConnectionSignature())
+
+		// a hack but this bypasses the HMAC stuff that is in Nintendo's PRUDP
+		// Quazal Rendez-vous just uses a random number here, but using the clients randomly generated number works too :)
+		return packet.Sender().ClientConnectionSignature()
+	} else {
 		clientConnectionSignature := packet.Sender().ClientConnectionSignature()
 
 		if clientConnectionSignature != nil {
 			return clientConnectionSignature
-		}
-
-		return []byte{0x0, 0x0, 0x0, 0x0}
-	} else { // Normal signature handling
-		if packet.Type() == DataPacket || packet.Type() == DisconnectPacket {
-			payload := NewStreamOut(packet.Sender().Server())
-			sessionKey := packet.Sender().SessionKey()
-			if sessionKey != nil {
-				payload.Grow(int64(len(sessionKey)))
-				payload.WriteBytesNext(sessionKey)
-			}
-			payload.WriteUInt16LE(packet.sequenceID)
-			payload.Grow(1)
-			payload.WriteByteNext(packet.fragmentID)
-			pktpay := packet.Payload()
-			if pktpay != nil && len(pktpay) > 0 {
-				payload.Grow(int64(len(pktpay)))
-				payload.WriteBytesNext(pktpay)
-			}
-
-			key := packet.Sender().SignatureKey()
-			cipher := hmac.New(md5.New, key)
-			cipher.Write(payload.Bytes())
-
-			return cipher.Sum(nil)[:4]
-		} else {
-			clientConnectionSignature := packet.Sender().ClientConnectionSignature()
-
-			if clientConnectionSignature != nil {
-				return clientConnectionSignature
-			}
 		}
 	}
 
@@ -284,16 +238,6 @@ func (packet *PacketV0) encodeOptions() []byte {
 
 	if packet.Type() == DataPacket {
 		stream.WriteUInt8(packet.FragmentID())
-	}
-
-	if packet.HasFlag(FlagHasSize) {
-		payload := packet.Payload()
-
-		if payload != nil {
-			stream.WriteUInt16LE(uint16(len(payload)))
-		} else {
-			stream.WriteUInt16LE(0)
-		}
 	}
 
 	return stream.Bytes()

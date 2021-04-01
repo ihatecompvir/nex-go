@@ -60,11 +60,15 @@ func (client *Client) UpdateRC4Key(RC4Key []byte) {
 
 // Cipher returns the RC4 cipher stream for out-bound packets
 func (client *Client) Cipher() *rc4.Cipher {
+	// This solves a bug where the RC4 cipher gets messed up somehow after encrypting the first packet
+	client.cipher, _ = rc4.NewCipher([]byte("CD&ML"))
 	return client.cipher
 }
 
 // Decipher returns the RC4 cipher stream for in-bound packets
 func (client *Client) Decipher() *rc4.Cipher {
+	// This solves a bug where the RC4 cipher gets messed up somehow after decrypting the first packet
+	client.decipher, _ = rc4.NewCipher([]byte("CD&ML"))
 	return client.decipher
 }
 
