@@ -47,6 +47,20 @@ func (stream *StreamIn) ReadString() (string, error) {
 	return strings.TrimRight(str, "\x00"), nil
 }
 
+// ReadString reads and returns a u32 length nex string type
+func (stream *StreamIn) Read4ByteString() (string, error) {
+	length := stream.ReadUInt32LE()
+
+	if len(stream.Bytes()[stream.ByteOffset():]) < int(length) {
+		return "", errors.New("[StreamIn] Nex string length longer than data size")
+	}
+
+	stringData := stream.ReadBytesNext(int64(length))
+	str := string(stringData)
+
+	return strings.TrimRight(str, "\x00"), nil
+}
+
 // ReadBuffer reads a nex Buffer type
 func (stream *StreamIn) ReadBuffer() ([]byte, error) {
 	length := stream.ReadUInt32LE()

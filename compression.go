@@ -1,5 +1,11 @@
 package nex
 
+import (
+	"bytes"
+	"compress/zlib"
+	"io/ioutil"
+)
+
 // DummyCompression represents no compression
 type DummyCompression struct{}
 
@@ -23,5 +29,13 @@ func (compression *ZLibCompression) Compress(data []byte) []byte {
 
 // Decompress returns the data as-is (needs to be updated to return ZLib decompressed data)
 func (compression *ZLibCompression) Decompress(data []byte) []byte {
-	return data
+	b := bytes.NewReader(data)
+	r, err := zlib.NewReader(b)
+	if err != nil {
+		return []byte{}
+	}
+	defer r.Close()
+
+	decompressedData, _ := ioutil.ReadAll(r)
+	return decompressedData
 }
