@@ -2,6 +2,7 @@ package nex
 
 import (
 	"crypto/rc4"
+	"fmt"
 	"net"
 )
 
@@ -20,10 +21,12 @@ type Client struct {
 	sessionKey                []byte
 	sequenceIDIn              *Counter
 	sequenceIDOut             *Counter
+	Username                  string
 }
 
 // Reset resets the Client to default values
 func (client *Client) Reset() {
+	fmt.Println("Resetting client")
 	client.sequenceIDIn = NewCounter(0)
 	client.sequenceIDOut = NewCounter(0)
 
@@ -37,6 +40,8 @@ func (client *Client) Reset() {
 		client.SetServerConnectionSignature([]byte{})
 		client.SetClientConnectionSignature([]byte{})
 	}
+
+	fmt.Println(client.Username)
 }
 
 // Address returns the clients UDP address

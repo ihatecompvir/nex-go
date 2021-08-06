@@ -100,11 +100,13 @@ func (packet *PacketV0) Decode() error {
 				zlib := ZLibCompression{}
 				newArray = zlib.Decompress(newArray)
 			}
+
 			request, err := NewRMCRequest(newArray)
-			fmt.Println(newArray)
 
 			if err != nil {
-				return errors.New("[PRUDPv0] Error parsing RMC request: " + err.Error())
+				// disable a fatal error here so the game wont get hung on waiting for an ack
+				// TODO: - properly implement fragmented packets, this error is exclusively triggered by them :(
+				fmt.Println("[PRUDPv0] Error parsing RMC request: " + err.Error())
 			}
 
 			packet.rmcRequest = request
