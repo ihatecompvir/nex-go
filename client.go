@@ -22,6 +22,7 @@ type Client struct {
 	sequenceIDIn              *Counter
 	sequenceIDOut             *Counter
 	Username                  string
+	WiiFC                     string
 }
 
 // Reset resets the Client to default values
