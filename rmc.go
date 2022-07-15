@@ -2,7 +2,7 @@ package nex
 
 import (
 	"errors"
-	"fmt"
+	"log"
 )
 
 // RMCRequest represets a RMC request
@@ -43,7 +43,7 @@ func NewRMCRequest(data []byte) (RMCRequest, error) {
 	size := int(stream.ReadUInt32LE())
 
 	if size != (len(data) - 4) {
-		fmt.Println(errors.New("[RMC] Data size does not match; ignore this error"))
+		log.Println(errors.New("[RMC] Data size does not match; ignore this error"))
 	}
 
 	protocolID := stream.ReadUInt8() ^ 0x80

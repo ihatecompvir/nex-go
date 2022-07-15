@@ -1,7 +1,7 @@
 package nex
 
 import (
-	"fmt"
+	"log"
 	"net"
 	"runtime"
 )
@@ -54,7 +54,7 @@ func (server *Server) Listen(address string) {
 		go server.listenDatagram(quit)
 	}
 
-	fmt.Println("NEX server listening on address", udpAddress)
+	log.Printf("NEX server now listening on address %s\n", udpAddress)
 
 	server.Emit("Listening", nil)
 
@@ -100,7 +100,7 @@ func (server *Server) handleSocketMessage() error {
 	packet, err = NewPacketV0(client, data)
 
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		return nil
 	}
 
@@ -186,7 +186,7 @@ func (server *Server) Kick(client *Client) {
 
 	if _, ok := server.clients[discriminator]; ok {
 		delete(server.clients, discriminator)
-		fmt.Println("Kicked user", discriminator)
+		log.Println("Kicked user", discriminator)
 	}
 }
 

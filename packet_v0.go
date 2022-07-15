@@ -5,7 +5,7 @@ import (
 	"crypto/md5"
 	"encoding/binary"
 	"errors"
-	"fmt"
+	"log"
 )
 
 // PacketV0 reresents a PRUDPv0 packet
@@ -106,7 +106,7 @@ func (packet *PacketV0) Decode() error {
 			if err != nil {
 				// disable a fatal error here so the game wont get hung on waiting for an ack
 				// TODO: - properly implement fragmented packets, this error is exclusively triggered by them :(
-				fmt.Println("[PRUDPv0] Error parsing RMC request: " + err.Error())
+				log.Println("[PRUDPv0] Error parsing RMC request: " + err.Error())
 			}
 
 			packet.rmcRequest = request
@@ -128,7 +128,7 @@ func (packet *PacketV0) Decode() error {
 	calculatedChecksum := packet.calculateChecksum(packetBody[:len(packetBody)-checksumSize])
 
 	if calculatedChecksum != packet.Checksum() {
-		fmt.Println("[ERROR] Calculated checksum did not match")
+		log.Println("[ERROR] Calculated checksum did not match")
 	}
 
 	return nil

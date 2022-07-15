@@ -5,7 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/md5"
 	"crypto/rc4"
-	"fmt"
+	"log"
 )
 
 // KerberosEncryption is used to encrypt/decrypt using Kerberos
@@ -49,7 +49,7 @@ func (encryption *KerberosEncryption) Encrypt(buffer []byte) []byte {
 // Decrypt will decrypt the given data using Kerberos
 func (encryption *KerberosEncryption) Decrypt(buffer []byte) []byte {
 	if !encryption.Validate(buffer) {
-		fmt.Println("INVALID KERB CHECKSUM")
+		log.Println("Invalid Kerberos checksum!")
 	}
 
 	offset := len(buffer)
