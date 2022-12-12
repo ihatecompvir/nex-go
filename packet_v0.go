@@ -101,11 +101,32 @@ func (packet *PacketV0) Decode() error {
 				newArray = zlib.Decompress(newArray)
 			}
 
+			// only Data packets should have fragments
+			if packet.Type() == DataPacket {
+
+				// check if the current incoming packet is a fragment
+				// these are guaranteed to be sent in order from the game
+				if packet.FragmentID() > 0 && packet.SequenceID() != packet.sender.LastFragmentSequenceID() {
+					packet.sender.SetLastFragmentSequenceID(packet.SequenceID())
+					packet.sender.SetFragmentedPayloadData(append(packet.sender.FragmentedPayloadData(), newArray...))
+				}
+
+				// the final fragment has come in
+				if packet.SequenceID() == packet.sender.LastFragmentSequenceID()+1 && packet.FragmentID() == 0 && packet.SequenceID() != 1 {
+					packet.sender.SetFragmentedPayloadData(append(packet.sender.FragmentedPayloadData(), newArray...))
+					packet.SetPayload(packet.sender.FragmentedPayloadData())
+					newArray = packet.sender.FragmentedPayloadData()
+
+					// reset the vars for the next fragmented packet that will come in
+					packet.sender.SetLastFragmentSequenceID(0)
+					packet.sender.SetFragmentedPayloadData(make([]byte, 0))
+				}
+			}
+
 			request, err := NewRMCRequest(newArray)
 
 			if err != nil {
 				// disable a fatal error here so the game wont get hung on waiting for an ack
-				// TODO: - properly implement fragmented packets, this error is exclusively triggered by them :(
 				log.Println("[PRUDPv0] Error parsing RMC request: " + err.Error())
 			}
 

@@ -2,7 +2,6 @@ package nex
 
 import (
 	"errors"
-	"log"
 )
 
 // RMCRequest represets a RMC request
@@ -40,11 +39,13 @@ func NewRMCRequest(data []byte) (RMCRequest, error) {
 	}
 
 	stream := NewStreamIn(data, nil)
-	size := int(stream.ReadUInt32LE())
 
-	if size != (len(data) - 4) {
+	// TODO: Re-enable this once we can properly detect that the packet was fragmented. Right now it just causes a lot of log spew
+	//size := int(stream.ReadUInt32LE())
+
+	/*if size != (len(data) - 4) {
 		log.Println(errors.New("[RMC] Data size does not match; ignore this error"))
-	}
+	}*/
 
 	protocolID := stream.ReadUInt8() ^ 0x80
 	callID := stream.ReadUInt32LE()

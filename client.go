@@ -22,12 +22,18 @@ type Client struct {
 	sequenceIDOut             *Counter
 	Username                  string
 	WiiFC                     string
+
+	// this enables per-client incoming fragmented packet support
+	lastFragmentSequenceID uint16
+	fragmentedPayloadData  []byte
 }
 
 // Reset resets the Client to default values
 func (client *Client) Reset() {
 	client.sequenceIDIn = NewCounter(0)
 	client.sequenceIDOut = NewCounter(0)
+	client.lastFragmentSequenceID = 0
+	client.fragmentedPayloadData = make([]byte, 0)
 
 	client.UpdateAccessKey(client.Server().AccessKey())
 	client.UpdateRC4Key([]byte("CD&ML"))
@@ -128,6 +134,22 @@ func (client *Client) SetSessionKey(sessionKey []byte) {
 // SessionKey returns the clients session key
 func (client *Client) SessionKey() []byte {
 	return client.sessionKey
+}
+
+func (client *Client) LastFragmentSequenceID() uint16 {
+	return client.lastFragmentSequenceID
+}
+
+func (client *Client) SetLastFragmentSequenceID(sequenceID uint16) {
+	client.lastFragmentSequenceID = sequenceID
+}
+
+func (client *Client) FragmentedPayloadData() []byte {
+	return client.fragmentedPayloadData
+}
+
+func (client *Client) SetFragmentedPayloadData(data []byte) {
+	client.fragmentedPayloadData = data
 }
 
 // NewClient returns a new PRUDP client
