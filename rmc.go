@@ -42,6 +42,7 @@ func NewRMCRequest(data []byte) (RMCRequest, error) {
 
 	// TODO: Re-enable this once we can properly detect that the packet was fragmented. Right now it just causes a lot of log spew
 	//size := int(stream.ReadUInt32LE())
+	stream.ReadUInt32LE()
 
 	/*if size != (len(data) - 4) {
 		log.Println(errors.New("[RMC] Data size does not match; ignore this error"))

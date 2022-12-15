@@ -54,7 +54,7 @@ func (server *Server) Listen(address string) {
 		go server.listenDatagram(quit)
 	}
 
-	log.Printf("NEX server now listening on address %s\n", udpAddress)
+	log.Printf("Rendez-vous server now listening on address %s\n", udpAddress)
 
 	server.Emit("Listening", nil)
 
