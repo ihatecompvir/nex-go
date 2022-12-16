@@ -4,6 +4,7 @@ import (
 	"log"
 	"net"
 	"runtime"
+	"time"
 )
 
 // Server represents a PRUDP server
@@ -309,6 +310,16 @@ func (server *Server) SetKerberosKeySize(kerberosKeySize int) {
 	server.kerberosKeySize = kerberosKeySize
 }
 
+// KerberosKeySize returns the server kerberos key size
+func (server *Server) FragmentSize() int16 {
+	return server.fragmentSize
+}
+
+// SetKerberosKeySize sets the server kerberos key size
+func (server *Server) SetFragmentSize(fragmentSize int16) {
+	server.fragmentSize = fragmentSize
+}
+
 // UsePacketCompression enables or disables packet compression
 func (server *Server) UsePacketCompression(usePacketCompression bool) {
 	if usePacketCompression {
@@ -332,8 +343,9 @@ func (server *Server) Send(packet PacketInterface) {
 	data := packet.Payload()
 	fragments := int(int16(len(data)) / server.fragmentSize)
 
-	fragmentID := 1
+	var fragmentID uint8 = 1
 	for i := 0; i <= fragments; i++ {
+		time.Sleep(time.Second / 2)
 		if int16(len(data)) < server.fragmentSize {
 			packet.SetPayload(data)
 			server.SendFragment(packet, 0)
@@ -348,11 +360,10 @@ func (server *Server) Send(packet PacketInterface) {
 }
 
 // SendFragment sends a packet fragment to the client
-func (server *Server) SendFragment(packet PacketInterface, fragmentID int) {
-	data := packet.Payload()
+func (server *Server) SendFragment(packet PacketInterface, fragmentID uint8) {
 	client := packet.Sender()
 
-	packet.SetPayload(server.compressPacket(data))
+	packet.SetFragmentID(fragmentID)
 	packet.SetSequenceID(uint16(client.SequenceIDCounterOut().Increment()))
 
 	encodedPacket := packet.Bytes()
