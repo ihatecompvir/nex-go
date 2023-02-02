@@ -197,8 +197,8 @@ func (server *Server) SendPing(client *Client) {
 
 	pingPacket, _ = NewPacketV0(client, nil)
 
-	pingPacket.SetSource(0xA1)
-	pingPacket.SetDestination(0xAF)
+	pingPacket.SetSource(0x31)
+	pingPacket.SetDestination(0x3F)
 	pingPacket.SetType(PingPacket)
 	pingPacket.AddFlag(FlagNeedsAck)
 	pingPacket.AddFlag(FlagReliable)
@@ -336,6 +336,17 @@ func (server *Server) UsePacketCompression(usePacketCompression bool) {
 // SetPacketCompression sets the packet compression function
 func (server *Server) SetPacketCompression(compression func([]byte) []byte) {
 	server.compressPacket = compression
+}
+
+// FindClientFromConnectionID finds a client by their Connection ID
+func (server *Server) FindClientFromConnectionID(rvcid uint32) *Client {
+	for _, client := range server.clients {
+		if client.connectionID == rvcid {
+			return client
+		}
+	}
+
+	return nil
 }
 
 // Send writes data to client

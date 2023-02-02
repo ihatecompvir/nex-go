@@ -22,6 +22,8 @@ type Client struct {
 	sequenceIDOut             *Counter
 	Username                  string
 	WiiFC                     string
+	connectionID              uint32
+	externalStationURL        string
 
 	// this enables per-client incoming fragmented packet support
 	lastFragmentSequenceID uint16
@@ -136,6 +138,16 @@ func (client *Client) SessionKey() []byte {
 	return client.sessionKey
 }
 
+// SetExternalStationURL sets the clients external station URL
+func (client *Client) SetExternalStationURL(externalStationURL string) {
+	client.externalStationURL = externalStationURL
+}
+
+// SetExternalStationURL returns the clients external station URL
+func (client *Client) ExternalStationURL() string {
+	return client.externalStationURL
+}
+
 func (client *Client) LastFragmentSequenceID() uint16 {
 	return client.lastFragmentSequenceID
 }
@@ -150,6 +162,16 @@ func (client *Client) FragmentedPayloadData() []byte {
 
 func (client *Client) SetFragmentedPayloadData(data []byte) {
 	client.fragmentedPayloadData = data
+}
+
+// SetConnectionID sets the clients Connection ID
+func (client *Client) SetConnectionID(connectionID uint32) {
+	client.connectionID = connectionID
+}
+
+// ConnectionID returns the clients Connection ID
+func (client *Client) ConnectionID() uint32 {
+	return client.connectionID
 }
 
 // NewClient returns a new PRUDP client
