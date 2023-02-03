@@ -110,7 +110,7 @@ func (request *RMCRequest) SetParameters(parameters []byte) {
 func (request *RMCRequest) Bytes() []byte {
 	body := NewStreamOut(nil)
 
-	body.WriteUInt8(request.protocolID | 0x80)
+	body.WriteUInt8(request.protocolID ^ 0x80)
 
 	body.WriteUInt32LE(request.callID)
 	body.WriteUInt32LE(request.methodID)
