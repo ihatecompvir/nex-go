@@ -18,12 +18,13 @@ type Client struct {
 	clientConnectionSignature []byte
 	sessionID                 int
 	sessionKey                []byte
-	sequenceIDIn              *Counter
-	sequenceIDOut             *Counter
-	Username                  string
-	WiiFC                     string
-	connectionID              uint32
-	externalStationURL        string
+	sequenceIDIn              *Counter // how many packets have gone in
+	sequenceIDOut             *Counter // how many packets have gone out
+	Username                  string   // the platform username of the client, "Master User (FRIEND CODE)" on Wii
+	WiiFC                     string   // only used for Wii, Friend Code
+	connectionID              uint32   // RVCID, Rendez-vous Connection ID
+	playerID                  uint32   // PID, PlayerID
+	externalStationURL        string   // used for NAT probing
 
 	// this enables per-client incoming fragmented packet support
 	lastFragmentSequenceID uint16
@@ -172,6 +173,16 @@ func (client *Client) SetConnectionID(connectionID uint32) {
 // ConnectionID returns the clients Connection ID
 func (client *Client) ConnectionID() uint32 {
 	return client.connectionID
+}
+
+// SetPlayerID sets the clients Player ID
+func (client *Client) SetPlayerID(playerID uint32) {
+	client.playerID = playerID
+}
+
+// PlayerID returns the clients Player ID
+func (client *Client) PlayerID() uint32 {
+	return client.playerID
 }
 
 // NewClient returns a new PRUDP client
