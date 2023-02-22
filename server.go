@@ -4,7 +4,6 @@ import (
 	"log"
 	"net"
 	"runtime"
-	"time"
 )
 
 // Server represents a PRUDP server
@@ -362,16 +361,32 @@ func (server *Server) Send(packet PacketInterface) {
 
 	var fragmentID uint8 = 1
 	for i := 0; i <= fragments; i++ {
-		time.Sleep(time.Second / 2)
 		if int16(len(data)) < server.fragmentSize {
-			packet.SetPayload(data)
-			server.SendFragment(packet, 0)
+			if packet.Type() == DataPacket {
+				newData := make([]byte, len(data)+1)
+				copy(newData[1:], data)
+				packet.SetPayload(newData)
+				server.SendFragment(packet, 0)
+			} else {
+				packet.SetPayload(data)
+				server.SendFragment(packet, 0)
+			}
 		} else {
-			packet.SetPayload(data[:server.fragmentSize])
-			server.SendFragment(packet, fragmentID)
+			if packet.Type() == DataPacket {
+				newData := make([]byte, server.fragmentSize)
+				copy(newData[1:], data[:server.fragmentSize-1])
+				packet.SetPayload(newData)
+				server.SendFragment(packet, fragmentID)
 
-			data = data[server.fragmentSize:]
-			fragmentID++
+				fragmentID++
+				data = data[server.fragmentSize-1:]
+			} else {
+				packet.SetPayload(data[:server.fragmentSize])
+				server.SendFragment(packet, fragmentID)
+
+				data = data[server.fragmentSize:]
+				fragmentID++
+			}
 		}
 	}
 }
