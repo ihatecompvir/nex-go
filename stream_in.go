@@ -40,7 +40,6 @@ func (stream *StreamIn) ReadUInt64LE() uint64 {
 }
 
 // ReadString reads and returns a nex string type
-// ReadString reads and returns a nex string type
 func (stream *StreamIn) ReadString() (string, error) {
 	length := stream.ReadUInt16LE()
 

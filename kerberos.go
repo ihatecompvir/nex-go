@@ -60,8 +60,6 @@ func (encryption *KerberosEncryption) Decrypt(buffer []byte) []byte {
 	decrypted := make([]byte, len(encrypted))
 	encryption.cipher.XORKeyStream(decrypted, encrypted)
 
-	log.Println(decrypted)
-
 	return decrypted
 }
 
