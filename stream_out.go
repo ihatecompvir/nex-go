@@ -38,12 +38,12 @@ func (stream *StreamOut) WriteUInt64LE(u64 uint64) {
 
 // WriteString writes a NEX string type
 func (stream *StreamOut) WriteString(str string) {
-	str = str + "\x00"
 	strLength := len(str)
 
-	stream.Grow(int64(strLength))
-	stream.WriteUInt16LE(uint16(strLength))
+	stream.Grow(int64((strLength * 2) + 1))
+	stream.WriteUInt16LE(uint16((strLength * 2) + 1))
 	stream.WriteBytesNext([]byte(str))
+	stream.WriteBytesNext(make([]byte, len(str)+1))
 }
 
 func (stream *StreamOut) WriteBufferString(str string) {
