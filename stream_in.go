@@ -46,10 +46,10 @@ func (stream *StreamIn) ReadString() (string, error) {
 	if len(stream.Bytes()[stream.ByteOffset():]) < int(length) {
 		return "", errors.New("[StreamIn] Nex string length longer than data size")
 	}
-
+	// Read approximately half of the string data length minus one from the stream
 	stringData := stream.ReadBytesNext(int64((length - 1) / 2))
 	str := string(stringData)
-
+	// Read the remaining bytes from the stream, accounting for the total length minus one
 	stream.ReadBytesNext(int64(((length - 1) / 2)) + 1)
 
 	return strings.TrimRight(str, "\x00"), nil
