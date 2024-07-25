@@ -25,6 +25,7 @@ type Client struct {
 	connectionID              uint32   // RVCID, Rendez-vous Connection ID
 	playerID                  uint32   // PID, PlayerID
 	externalStationURL        string   // used for NAT probing
+	platform                  int      // the platform the client is connecting from
 
 	// this enables per-client incoming fragmented packet support
 	lastFragmentSequenceID uint16
@@ -183,6 +184,16 @@ func (client *Client) SetPlayerID(playerID uint32) {
 // PlayerID returns the clients Player ID
 func (client *Client) PlayerID() uint32 {
 	return client.playerID
+}
+
+// SetPlatform sets the clients platform
+func (client *Client) SetPlatform(platform int) {
+	client.platform = platform
+}
+
+// Platform returns the clients platform
+func (client *Client) Platform() int {
+	return client.platform
 }
 
 // NewClient returns a new PRUDP client
