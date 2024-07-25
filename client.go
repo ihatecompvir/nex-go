@@ -26,6 +26,7 @@ type Client struct {
 	playerID                  uint32   // PID, PlayerID
 	externalStationURL        string   // used for NAT probing
 	platform                  int      // the platform the client is connecting from
+	machineID                 int      // the machine ID of the client
 
 	// this enables per-client incoming fragmented packet support
 	lastFragmentSequenceID uint16
@@ -194,6 +195,16 @@ func (client *Client) SetPlatform(platform int) {
 // Platform returns the clients platform
 func (client *Client) Platform() int {
 	return client.platform
+}
+
+// SetMachineID sets the clients machine ID
+func (client *Client) SetMachineID(machineID int) {
+	client.machineID = machineID
+}
+
+// MachineID returns the clients machine ID
+func (client *Client) MachineID() int {
+	return client.machineID
 }
 
 // NewClient returns a new PRUDP client
