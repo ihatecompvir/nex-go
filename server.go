@@ -2,6 +2,7 @@ package nex
 
 import (
 	"log"
+	"math"
 	"net"
 	"runtime"
 )
@@ -357,7 +358,8 @@ func (server *Server) FindClientFromConnectionID(rvcid uint32) *Client {
 // Send writes data to client
 func (server *Server) Send(packet PacketInterface) {
 	data := packet.Payload()
-	fragments := int(int16(len(data)) / server.fragmentSize)
+	dataLength := len(data)
+	fragments := int(math.Ceil(float64(dataLength) / float64(server.fragmentSize)))
 
 	var fragmentID uint8 = 1
 	for i := 0; i <= fragments; i++ {
