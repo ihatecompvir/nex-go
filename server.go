@@ -5,6 +5,7 @@ import (
 	"math"
 	"net"
 	"runtime"
+	"time"
 )
 
 // Server represents a PRUDP server
@@ -362,8 +363,8 @@ func (server *Server) Send(packet PacketInterface) {
 	fragments := int(math.Ceil(float64(dataLength) / float64(server.fragmentSize)))
 
 	var fragmentID uint8 = 1
-	for i := 0; i <= fragments; i++ {
-		if int16(len(data)) < server.fragmentSize {
+	for i := 0; i < fragments; i++ {
+		if len(data) <= int(server.fragmentSize) {
 			if packet.Type() == DataPacket {
 				newData := make([]byte, len(data)+1)
 				copy(newData[1:], data)
@@ -373,22 +374,30 @@ func (server *Server) Send(packet PacketInterface) {
 				packet.SetPayload(data)
 				server.SendFragment(packet, 0)
 			}
+			break
 		} else {
 			if packet.Type() == DataPacket {
 				newData := make([]byte, server.fragmentSize)
-				copy(newData[1:], data[:server.fragmentSize-1])
+				copy(newData[1:], data[:int(server.fragmentSize)-1])
 				packet.SetPayload(newData)
 				server.SendFragment(packet, fragmentID)
 
 				fragmentID++
-				data = data[server.fragmentSize-1:]
+				data = data[int(server.fragmentSize)-1:]
 			} else {
-				packet.SetPayload(data[:server.fragmentSize])
+				packet.SetPayload(data[:int(server.fragmentSize)])
 				server.SendFragment(packet, fragmentID)
 
-				data = data[server.fragmentSize:]
+				data = data[int(server.fragmentSize):]
 				fragmentID++
 			}
+		}
+
+		// do not overwhelm client with packets by waiting a bit before sending the next fragment
+		// this should send a packet roughly every frame since the game runs at 60 fps
+		// fixes the issue where loading things like leaderboards with a lot of scores would cause the client to unexpectedly DC
+		if i < fragments-1 {
+			time.Sleep(16 * time.Millisecond)
 		}
 	}
 }
