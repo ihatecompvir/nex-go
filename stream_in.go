@@ -23,6 +23,12 @@ func (stream *StreamIn) ReadUInt16LE() uint16 {
 	return stream.ReadU16LENext(1)[0]
 }
 
+// ReadUInt24LE reads a uint32
+func (stream *StreamIn) ReadUInt24LE() uint32 {
+	data := stream.ReadU32LENext(3)
+	return uint32(data[0]) | uint32(data[1])<<8 | uint32(data[2])<<16
+}
+
 // ReadUInt32LE reads a uint32
 func (stream *StreamIn) ReadUInt32LE() uint32 {
 	return stream.ReadU32LENext(1)[0]
@@ -40,9 +46,11 @@ func (stream *StreamIn) ReadString() (string, error) {
 	if len(stream.Bytes()[stream.ByteOffset():]) < int(length) {
 		return "", errors.New("[StreamIn] Nex string length longer than data size")
 	}
-
-	stringData := stream.ReadBytesNext(int64(length))
+	// Read approximately half of the string data length minus one from the stream
+	stringData := stream.ReadBytesNext(int64((length - 1) / 2))
 	str := string(stringData)
+	// Read the remaining bytes from the stream, accounting for the total length minus one
+	stream.ReadBytesNext(int64(((length - 1) / 2)) + 1)
 
 	return strings.TrimRight(str, "\x00"), nil
 }
@@ -59,6 +67,32 @@ func (stream *StreamIn) Read4ByteString() (string, error) {
 	str := string(stringData)
 
 	return strings.TrimRight(str, "\x00"), nil
+}
+
+func (stream *StreamIn) Read2ByteString() (string, error) {
+	// Read the length of the string (in bytes)
+	length := stream.ReadUInt16LE()
+
+	// Ensure that the remaining data size in the stream is at least equal to the length of the string
+	if len(stream.Bytes()[stream.ByteOffset():]) < int(length) {
+		return "", errors.New("[StreamIn] Next string length longer than data size")
+	}
+
+	// Read the next 'length' bytes from the stream
+	stringData := stream.ReadBytesNext(int64(length))
+
+	// Convert the byte array to a UTF-16 string
+	str := string(stringData)
+
+	// Manually remove any trailing null characters from the string
+	for i := len(str) - 1; i >= 0; i-- {
+		if str[i] != '\x00' {
+			str = str[:i+1]
+			break
+		}
+	}
+
+	return str, nil
 }
 
 // ReadBuffer reads a nex Buffer type
