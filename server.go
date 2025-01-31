@@ -356,6 +356,17 @@ func (server *Server) FindClientFromConnectionID(rvcid uint32) *Client {
 	return nil
 }
 
+// FindClientFromIPAddress finds a client by their IP address
+func (server *Server) FindClientFromIPAddress(ipAddress string) *Client {
+	for _, client := range server.clients {
+		if client.Address().String() == ipAddress {
+			return client
+		}
+	}
+
+	return nil
+}
+
 // Send writes data to client
 func (server *Server) Send(packet PacketInterface) {
 	data := packet.Payload()
