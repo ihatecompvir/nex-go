@@ -95,7 +95,7 @@ func (packet *PacketV0) Decode() error {
 
 			packet.Sender().Decipher().XORKeyStream(ciphered, payloadCrypted)
 			newArray := make([]byte, len(ciphered)-1)
-			copy(newArray[0:len(ciphered)-1], ciphered[1:len(ciphered)-1])
+			copy(newArray, ciphered[1:])
 			if newArray[0] == 0x78 && newArray[1] == 0x9C {
 				zlib := ZLibCompression{}
 				newArray = zlib.Decompress(newArray)
