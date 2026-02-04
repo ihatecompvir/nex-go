@@ -126,7 +126,10 @@ func (server *Server) handleSocketMessage() error {
 
 		server.Emit("Connect", packet)
 	case DataPacket:
-		server.Emit("Data", packet)
+		// only emit Data event for complete packets, not partial fragments
+		if !packet.IsPartialFragment() {
+			server.Emit("Data", packet)
+		}
 	case DisconnectPacket:
 		server.Kick(client)
 		server.Emit("Disconnect", packet)

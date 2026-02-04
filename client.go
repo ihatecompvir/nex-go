@@ -3,6 +3,7 @@ package nex
 import (
 	"crypto/rc4"
 	"net"
+	"sync"
 )
 
 // Client represents a connected or non-connected PRUDP client
@@ -29,16 +30,15 @@ type Client struct {
 	machineID                 int      // the machine ID of the client
 
 	// this enables per-client incoming fragmented packet support
-	lastFragmentSequenceID uint16
-	fragmentedPayloadData  []byte
+	fragmentMutex      sync.Mutex
+	fragmentedPayloads map[uint8][]byte // fragmentID -> payload data
 }
 
 // Reset resets the Client to default values
 func (client *Client) Reset() {
 	client.sequenceIDIn = NewCounter(0)
 	client.sequenceIDOut = NewCounter(0)
-	client.lastFragmentSequenceID = 0
-	client.fragmentedPayloadData = make([]byte, 0)
+	client.fragmentedPayloads = make(map[uint8][]byte)
 
 	client.UpdateAccessKey(client.Server().AccessKey())
 	client.UpdateRC4Key([]byte("CD&ML"))
@@ -151,20 +151,54 @@ func (client *Client) ExternalStationURL() string {
 	return client.externalStationURL
 }
 
-func (client *Client) LastFragmentSequenceID() uint16 {
-	return client.lastFragmentSequenceID
+// LockFragmentState locks the fragment mutex for thread-safe fragment reassembly
+func (client *Client) LockFragmentState() {
+	client.fragmentMutex.Lock()
 }
 
-func (client *Client) SetLastFragmentSequenceID(sequenceID uint16) {
-	client.lastFragmentSequenceID = sequenceID
+// UnlockFragmentState unlocks the fragment mutex
+func (client *Client) UnlockFragmentState() {
+	client.fragmentMutex.Unlock()
 }
 
-func (client *Client) FragmentedPayloadData() []byte {
-	return client.fragmentedPayloadData
+// StoreFragment stores a fragment payload by its fragment ID (must hold lock)
+func (client *Client) StoreFragment(fragmentID uint8, data []byte) {
+	client.fragmentedPayloads[fragmentID] = data
 }
 
-func (client *Client) SetFragmentedPayloadData(data []byte) {
-	client.fragmentedPayloadData = data
+// HasFragments returns true if there are buffered fragments (must hold lock)
+func (client *Client) HasFragments() bool {
+	return len(client.fragmentedPayloads) > 0
+}
+
+// AssembleFragments assembles all buffered fragments in order and clears the buffer (must hold lock)
+func (client *Client) AssembleFragments(finalPayload []byte) []byte {
+	// Find the highest fragment ID to know how many fragments we have
+	var maxFragmentID uint8 = 0
+	for id := range client.fragmentedPayloads {
+		if id > maxFragmentID {
+			maxFragmentID = id
+		}
+	}
+
+	// Assemble fragments in order: 1, 2, 3, ..., maxFragmentID, then the final payload (fragmentID 0)
+	var assembled []byte
+	for i := uint8(1); i <= maxFragmentID; i++ {
+		if fragment, ok := client.fragmentedPayloads[i]; ok {
+			assembled = append(assembled, fragment...)
+		}
+	}
+	assembled = append(assembled, finalPayload...)
+
+	// Clear the fragment buffer
+	client.fragmentedPayloads = make(map[uint8][]byte)
+
+	return assembled
+}
+
+// ClearFragmentState resets fragment reassembly state (must hold lock)
+func (client *Client) ClearFragmentState() {
+	client.fragmentedPayloads = make(map[uint8][]byte)
 }
 
 // SetConnectionID sets the clients Connection ID

@@ -16,6 +16,7 @@ type Packet struct {
 	fragmentID          uint8
 	payload             []byte
 	rmcRequest          RMCRequest
+	isPartialFragment   bool
 	PacketInterface
 }
 
@@ -157,6 +158,16 @@ func (packet *Packet) Payload() []byte {
 // RMCRequest returns the packet RMC request
 func (packet *Packet) RMCRequest() RMCRequest {
 	return packet.rmcRequest
+}
+
+// SetIsPartialFragment sets whether this packet is a partial fragment still being assembled
+func (packet *Packet) SetIsPartialFragment(isPartial bool) {
+	packet.isPartialFragment = isPartial
+}
+
+// IsPartialFragment returns whether this packet is a partial fragment still being assembled
+func (packet *Packet) IsPartialFragment() bool {
+	return packet.isPartialFragment
 }
 
 // NewPacket returns a new PRUDP packet generic

@@ -29,5 +29,6 @@ type PacketInterface interface {
 	SetPayload(payload []byte)
 	Payload() []byte
 	RMCRequest() RMCRequest
+	IsPartialFragment() bool
 	Bytes() []byte
 }
