@@ -5,6 +5,7 @@ import (
 	"math"
 	"net"
 	"runtime"
+	"sync"
 	"time"
 )
 
@@ -14,6 +15,7 @@ type Server struct {
 	compressPacket        func([]byte) []byte
 	decompressPacket      func([]byte) []byte
 	clients               map[string]*Client
+	clientMutex           sync.RWMutex
 	genericEventHandles   map[string][]func(PacketInterface)
 	prudpV0EventHandles   map[string][]func(*PacketV0)
 	accessKey             string
@@ -89,12 +91,12 @@ func (server *Server) handleSocketMessage() error {
 
 	discriminator := addr.String()
 
+	server.clientMutex.Lock()
 	if _, ok := server.clients[discriminator]; !ok {
-		newClient := NewClient(addr, server)
-		server.clients[discriminator] = newClient
+		server.clients[discriminator] = NewClient(addr, server)
 	}
-
 	client := server.clients[discriminator]
+	server.clientMutex.Unlock()
 
 	data := buffer[0:length]
 
@@ -181,7 +183,9 @@ func (server *Server) Emit(event string, packet interface{}) {
 func (server *Server) ClientConnected(client *Client) bool {
 	discriminator := client.Address().String()
 
+	server.clientMutex.RLock()
 	_, connected := server.clients[discriminator]
+	server.clientMutex.RUnlock()
 
 	return connected
 }
@@ -190,10 +194,12 @@ func (server *Server) ClientConnected(client *Client) bool {
 func (server *Server) Kick(client *Client) {
 	discriminator := client.Address().String()
 
+	server.clientMutex.Lock()
 	if _, ok := server.clients[discriminator]; ok {
 		delete(server.clients, discriminator)
 		log.Println("Kicked user", discriminator)
 	}
+	server.clientMutex.Unlock()
 }
 
 // SendPing sends a ping packet to the given client
@@ -350,6 +356,9 @@ func (server *Server) SetPacketCompression(compression func([]byte) []byte) {
 
 // FindClientFromConnectionID finds a client by their Connection ID
 func (server *Server) FindClientFromConnectionID(rvcid uint32) *Client {
+	server.clientMutex.RLock()
+	defer server.clientMutex.RUnlock()
+
 	for _, client := range server.clients {
 		if client.connectionID == rvcid {
 			return client
@@ -361,6 +370,9 @@ func (server *Server) FindClientFromConnectionID(rvcid uint32) *Client {
 
 // FindClientFromIPAddress finds a client by their IP address
 func (server *Server) FindClientFromIPAddress(ipAddress string) *Client {
+	server.clientMutex.RLock()
+	defer server.clientMutex.RUnlock()
+
 	for _, client := range server.clients {
 		if client.Address().String() == ipAddress {
 			return client
