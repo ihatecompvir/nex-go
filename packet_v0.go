@@ -101,25 +101,7 @@ func (packet *PacketV0) Decode() error {
 				newArray = zlib.Decompress(newArray)
 			}
 
-			if packet.Type() == DataPacket {
-				if packet.FragmentID() > 0 {
-					packet.sender.StoreFragment(packet.FragmentID(), newArray)
-					packet.SetIsPartialFragment(true)
-				} else if packet.sender.HasFragments() {
-					newArray = packet.sender.AssembleFragments(newArray)
-					packet.SetPayload(newArray)
-				}
-			}
-
-			if !packet.isPartialFragment {
-				request, err := NewRMCRequest(newArray)
-
-				if err != nil {
-					log.Println("[PRUDPv0] Error parsing RMC request: " + err.Error())
-				}
-
-				packet.rmcRequest = request
-			}
+			packet.SetPayload(newArray)
 		}
 	}
 

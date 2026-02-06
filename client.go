@@ -2,7 +2,6 @@ package nex
 
 import (
 	"crypto/rc4"
-	"log"
 	"net"
 	"sync"
 )
@@ -30,16 +29,22 @@ type Client struct {
 	platform                  int      // the platform the client is connecting from
 	machineID                 int      // the machine ID of the client
 
-	// this serializes packet processing per-client to prevent fragment reassembly races
-	processingMutex    sync.Mutex
-	fragmentedPayloads map[uint8][]byte // fragmentID -> payload data
+	// processingMutex serializes packet processing per-client
+	processingMutex sync.Mutex
+
+	// PacketDispatchQueue reorders incoming packets by SequenceID
+	dispatchQueue *PacketDispatchQueue
+
+	// incomingFragmentBuffer accumulates payload data from ordered fragment packets
+	incomingFragmentBuffer []byte
 }
 
 // Reset resets the Client to default values
 func (client *Client) Reset() {
 	client.sequenceIDIn = NewCounter(0)
 	client.sequenceIDOut = NewCounter(0)
-	client.fragmentedPayloads = make(map[uint8][]byte)
+	client.dispatchQueue = NewPacketDispatchQueue(0)
+	client.incomingFragmentBuffer = nil
 
 	client.UpdateAccessKey(client.Server().AccessKey())
 	client.UpdateRC4Key([]byte("CD&ML"))
@@ -162,55 +167,24 @@ func (client *Client) UnlockProcessing() {
 	client.processingMutex.Unlock()
 }
 
-// StoreFragment stores a fragment payload by its fragment ID (must hold lock)
-func (client *Client) StoreFragment(fragmentID uint8, data []byte) {
-	client.fragmentedPayloads[fragmentID] = data
+// DispatchQueue returns the client's packet dispatch queue
+func (client *Client) DispatchQueue() *PacketDispatchQueue {
+	return client.dispatchQueue
 }
 
-// HasFragments returns true if there are buffered fragments (must hold lock)
-func (client *Client) HasFragments() bool {
-	return len(client.fragmentedPayloads) > 0
+// IncomingFragmentBuffer returns the current incoming fragment buffer
+func (client *Client) IncomingFragmentBuffer() []byte {
+	return client.incomingFragmentBuffer
 }
 
-// AssembleFragments assembles all buffered fragments in order and clears the buffer (must hold lock)
-func (client *Client) AssembleFragments(finalPayload []byte) []byte {
-	// Find the highest fragment ID to know how many fragments we have
-	var maxFragmentID uint8 = 0
-	for id := range client.fragmentedPayloads {
-		if id > maxFragmentID {
-			maxFragmentID = id
-		}
-	}
-
-	if debugNetwork.Load() {
-		log.Printf("[DIAG] Assembling %d fragments (max fragID=%d) + final payload (%d bytes) for %s\n",
-			len(client.fragmentedPayloads), maxFragmentID, len(finalPayload), client.Address().String())
-	}
-
-	// Assemble fragments in order: 1, 2, 3, ..., maxFragmentID, then the final payload (fragmentID 0)
-	var assembled []byte
-	for i := uint8(1); i <= maxFragmentID; i++ {
-		if fragment, ok := client.fragmentedPayloads[i]; ok {
-			assembled = append(assembled, fragment...)
-		} else if debugNetwork.Load() {
-			log.Printf("[DIAG] WARNING: Missing fragment %d during assembly for %s\n", i, client.Address().String())
-		}
-	}
-	assembled = append(assembled, finalPayload...)
-
-	if debugNetwork.Load() {
-		log.Printf("[DIAG] Assembled total: %d bytes for %s\n", len(assembled), client.Address().String())
-	}
-
-	// Clear the fragment buffer
-	client.fragmentedPayloads = make(map[uint8][]byte)
-
-	return assembled
+// SetIncomingFragmentBuffer sets the incoming fragment buffer
+func (client *Client) SetIncomingFragmentBuffer(buffer []byte) {
+	client.incomingFragmentBuffer = buffer
 }
 
-// ClearFragmentState resets fragment reassembly state (must hold lock)
-func (client *Client) ClearFragmentState() {
-	client.fragmentedPayloads = make(map[uint8][]byte)
+// AppendIncomingFragment appends payload data to the incoming fragment buffer
+func (client *Client) AppendIncomingFragment(data []byte) {
+	client.incomingFragmentBuffer = append(client.incomingFragmentBuffer, data...)
 }
 
 // SetConnectionID sets the clients Connection ID

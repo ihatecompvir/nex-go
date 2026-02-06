@@ -160,6 +160,11 @@ func (packet *Packet) RMCRequest() RMCRequest {
 	return packet.rmcRequest
 }
 
+// SetRMCRequest sets the packet RMC request
+func (packet *Packet) SetRMCRequest(request RMCRequest) {
+	packet.rmcRequest = request
+}
+
 // SetIsPartialFragment sets whether this packet is a partial fragment still being assembled
 func (packet *Packet) SetIsPartialFragment(isPartial bool) {
 	packet.isPartialFragment = isPartial

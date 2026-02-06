@@ -172,7 +172,7 @@ func (server *Server) handleSocketMessage() error {
 
 	data := buffer[0:length]
 
-	// Serialize packet decode + event dispatch per-client to prevent racing
+	// Serialize packet processing per-client to prevent racing
 	client.LockProcessing()
 	defer client.UnlockProcessing()
 
@@ -209,43 +209,64 @@ func (server *Server) handleSocketMessage() error {
 		}
 	}
 
-	switch packet.Type() {
-	case SynPacket:
-		client.Reset()
-		server.Emit("Syn", packet)
-	case ConnectPacket:
-		packet.Sender().SetClientConnectionSignature(packet.ConnectionSignature())
+	// Push the packet into the client's dispatch queue for ordered processing
+	client.DispatchQueue().Queue(packet)
 
-		server.Emit("Connect", packet)
-	case DataPacket:
-		// only emit Data event for complete packets, not partial fragments
-		if !packet.IsPartialFragment() {
-			dataEventsEmitted.Add(1)
-			if debugNetwork.Load() {
-				request := packet.RMCRequest()
-				log.Printf("[DIAG] DATA complete from %s: protocol=%d method=%d callID=%d paramLen=%d\n",
-					discriminator, request.ProtocolID(), request.MethodID(), request.CallID(), len(request.Parameters()))
+	// Process all consecutively available packets in sequence order
+	for queued := client.DispatchQueue().GetNextToDispatch(); queued != nil; queued = client.DispatchQueue().GetNextToDispatch() {
+		switch queued.Type() {
+		case SynPacket:
+			client.Reset()
+			server.Emit("Syn", queued)
+		case ConnectPacket:
+			queued.Sender().SetClientConnectionSignature(queued.ConnectionSignature())
+			server.Emit("Connect", queued)
+		case DataPacket:
+			// Append this packet's payload to the fragment buffer
+			client.AppendIncomingFragment(queued.Payload())
+
+			if queued.FragmentID() == 0 {
+				// FragmentID 0 means this is the last (or only) fragment
+				assembledPayload := client.IncomingFragmentBuffer()
+
+				request, rmcErr := NewRMCRequest(assembledPayload)
+				if rmcErr != nil {
+					log.Println("[PRUDPv0] Error parsing RMC request: " + rmcErr.Error())
+				} else {
+					queued.SetPayload(assembledPayload)
+					queued.SetRMCRequest(request)
+
+					dataEventsEmitted.Add(1)
+					if debugNetwork.Load() {
+						log.Printf("[DIAG] DATA complete from %s: protocol=%d method=%d callID=%d paramLen=%d\n",
+							discriminator, request.ProtocolID(), request.MethodID(), request.CallID(), len(request.Parameters()))
+					}
+					server.Emit("Data", queued)
+				}
+
+				// Clear the fragment buffer for the next message
+				client.SetIncomingFragmentBuffer(nil)
+			} else {
+				fragmentsStored.Add(1)
+				if debugNetwork.Load() {
+					log.Printf("[DIAG] DATA fragment queued from %s: fragID=%d seq=%d\n",
+						discriminator, queued.FragmentID(), queued.SequenceID())
+				}
 			}
-			server.Emit("Data", packet)
-		} else {
-			fragmentsStored.Add(1)
+		case DisconnectPacket:
 			if debugNetwork.Load() {
-				log.Printf("[DIAG] DATA fragment stored from %s: fragID=%d seq=%d\n",
-					discriminator, packet.FragmentID(), packet.SequenceID())
+				log.Printf("[DIAG] Client disconnecting: %s (username=%s)\n", discriminator, client.Username)
 			}
+			server.Kick(client)
+			server.Emit("Disconnect", queued)
+		case PingPacket:
+			server.SendPing(client)
+			server.Emit("Ping", queued)
 		}
-	case DisconnectPacket:
-		if debugNetwork.Load() {
-			log.Printf("[DIAG] Client disconnecting: %s (username=%s)\n", discriminator, client.Username)
-		}
-		server.Kick(client)
-		server.Emit("Disconnect", packet)
-	case PingPacket:
-		server.SendPing(client)
-		server.Emit("Ping", packet)
+
+		server.Emit("Packet", queued)
+		client.DispatchQueue().Dispatched(queued)
 	}
-
-	server.Emit("Packet", packet)
 
 	return nil
 }
