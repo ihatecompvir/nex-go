@@ -182,7 +182,7 @@ func (client *Client) AssembleFragments(finalPayload []byte) []byte {
 		}
 	}
 
-	if debugNetwork {
+	if debugNetwork.Load() {
 		log.Printf("[DIAG] Assembling %d fragments (max fragID=%d) + final payload (%d bytes) for %s\n",
 			len(client.fragmentedPayloads), maxFragmentID, len(finalPayload), client.Address().String())
 	}
@@ -192,13 +192,13 @@ func (client *Client) AssembleFragments(finalPayload []byte) []byte {
 	for i := uint8(1); i <= maxFragmentID; i++ {
 		if fragment, ok := client.fragmentedPayloads[i]; ok {
 			assembled = append(assembled, fragment...)
-		} else if debugNetwork {
+		} else if debugNetwork.Load() {
 			log.Printf("[DIAG] WARNING: Missing fragment %d during assembly for %s\n", i, client.Address().String())
 		}
 	}
 	assembled = append(assembled, finalPayload...)
 
-	if debugNetwork {
+	if debugNetwork.Load() {
 		log.Printf("[DIAG] Assembled total: %d bytes for %s\n", len(assembled), client.Address().String())
 	}
 

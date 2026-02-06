@@ -13,7 +13,11 @@ import (
 )
 
 // debugNetwork enables verbose network diagnostics when DEBUGNETWORK env var is set
-var debugNetwork = os.Getenv("DEBUGNETWORK") != ""
+var debugNetwork atomic.Bool
+
+func init() {
+	debugNetwork.Store(os.Getenv("DEBUGNETWORK") != "")
+}
 
 // diagnostics
 // TODO: replace this with prometheus metrics or something similar in the future, for a proper monitoring solution
@@ -81,7 +85,7 @@ func (server *Server) Listen(address string) {
 
 	log.Printf("Rendez-vous server now listening on address %s\n", udpAddress)
 
-	if debugNetwork {
+	if debugNetwork.Load() {
 		log.Println("[DIAG] Network diagnostics ENABLED (DEBUGNETWORK is set)")
 		go func() {
 			for {
@@ -162,7 +166,7 @@ func (server *Server) handleSocketMessage() error {
 	client := server.clients[discriminator]
 	server.clientMutex.Unlock()
 
-	if isNew && debugNetwork {
+	if isNew && debugNetwork.Load() {
 		log.Printf("[DIAG] New client created: %s\n", discriminator)
 	}
 
@@ -178,7 +182,7 @@ func (server *Server) handleSocketMessage() error {
 
 	if err != nil {
 		packetsFailed.Add(1)
-		if debugNetwork {
+		if debugNetwork.Load() {
 			log.Printf("[DIAG] Packet decode failed from %s (len=%d): %v\n", discriminator, length, err)
 		} else {
 			log.Println(err)
@@ -193,7 +197,7 @@ func (server *Server) handleSocketMessage() error {
 		return nil
 	}
 
-	if debugNetwork {
+	if debugNetwork.Load() {
 		log.Printf("[DIAG] %s from %s seq=%d frag=%d flags=0x%02X len=%d\n",
 			packetTypeName(packet.Type()), discriminator,
 			packet.SequenceID(), packet.FragmentID(), packet.Flags(), length)
@@ -217,7 +221,7 @@ func (server *Server) handleSocketMessage() error {
 		// only emit Data event for complete packets, not partial fragments
 		if !packet.IsPartialFragment() {
 			dataEventsEmitted.Add(1)
-			if debugNetwork {
+			if debugNetwork.Load() {
 				request := packet.RMCRequest()
 				log.Printf("[DIAG] DATA complete from %s: protocol=%d method=%d callID=%d paramLen=%d\n",
 					discriminator, request.ProtocolID(), request.MethodID(), request.CallID(), len(request.Parameters()))
@@ -225,13 +229,13 @@ func (server *Server) handleSocketMessage() error {
 			server.Emit("Data", packet)
 		} else {
 			fragmentsStored.Add(1)
-			if debugNetwork {
+			if debugNetwork.Load() {
 				log.Printf("[DIAG] DATA fragment stored from %s: fragID=%d seq=%d\n",
 					discriminator, packet.FragmentID(), packet.SequenceID())
 			}
 		}
 	case DisconnectPacket:
-		if debugNetwork {
+		if debugNetwork.Load() {
 			log.Printf("[DIAG] Client disconnecting: %s (username=%s)\n", discriminator, client.Username)
 		}
 		server.Kick(client)
@@ -299,7 +303,7 @@ func (server *Server) Kick(client *Client) {
 	if _, ok := server.clients[discriminator]; ok {
 		delete(server.clients, discriminator)
 		clientsKicked.Add(1)
-		if debugNetwork {
+		if debugNetwork.Load() {
 			log.Printf("[DIAG] Kicked user %s (username=%s, PID=%d, RVCID=%d)\n",
 				discriminator, client.Username, client.PlayerID(), client.ConnectionID())
 		} else {
@@ -495,7 +499,7 @@ func (server *Server) Send(packet PacketInterface) {
 	dataLength := len(data)
 	fragments := int(math.Ceil(float64(dataLength) / float64(server.fragmentSize)))
 
-	if debugNetwork && fragments == 0 && dataLength == 0 {
+	if debugNetwork.Load() && fragments == 0 && dataLength == 0 {
 		log.Printf("[DIAG] Send called with empty payload for %s type=%s\n",
 			packet.Sender().Address().String(), packetTypeName(packet.Type()))
 	}
@@ -555,6 +559,21 @@ func (server *Server) SendFragment(packet PacketInterface, fragmentID uint8) {
 // SendRaw writes raw packet data to the client socket
 func (server *Server) SendRaw(conn *net.UDPAddr, data []byte) {
 	server.Socket().WriteToUDP(data, conn)
+}
+
+// SetDebugNetwork enables or disables verbose network diagnostics at runtime
+func (server *Server) SetDebugNetwork(enabled bool) {
+	debugNetwork.Store(enabled)
+	if enabled {
+		log.Println("[DIAG] Network diagnostics ENABLED")
+	} else {
+		log.Println("[DIAG] Network diagnostics DISABLED")
+	}
+}
+
+// DebugNetwork returns whether network diagnostics are enabled
+func (server *Server) DebugNetwork() bool {
+	return debugNetwork.Load()
 }
 
 // NewServer returns a new NEX server
