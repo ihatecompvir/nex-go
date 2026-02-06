@@ -1,12 +1,32 @@
 package nex
 
 import (
+	"fmt"
 	"log"
 	"math"
 	"net"
+	"os"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
+)
+
+// debugNetwork enables verbose network diagnostics when DEBUGNETWORK env var is set
+var debugNetwork = os.Getenv("DEBUGNETWORK") != ""
+
+// diagnostics
+// TODO: replace this with prometheus metrics or something similar in the future, for a proper monitoring solution
+// this is just some quick and dirty atomic counters to get a general idea of what's going on with the server
+var (
+	packetsReceived   atomic.Uint64
+	packetsDecoded    atomic.Uint64
+	packetsFailed     atomic.Uint64
+	acksIgnored       atomic.Uint64
+	dataEventsEmitted atomic.Uint64
+	fragmentsStored   atomic.Uint64
+	clientsCreated    atomic.Uint64
+	clientsKicked     atomic.Uint64
 )
 
 // Server represents a PRUDP server
@@ -61,6 +81,29 @@ func (server *Server) Listen(address string) {
 
 	log.Printf("Rendez-vous server now listening on address %s\n", udpAddress)
 
+	if debugNetwork {
+		log.Println("[DIAG] Network diagnostics ENABLED (DEBUGNETWORK is set)")
+		go func() {
+			for {
+				time.Sleep(60 * time.Second)
+				server.clientMutex.RLock()
+				numClients := len(server.clients)
+				server.clientMutex.RUnlock()
+				log.Printf("[DIAG] Stats: clients=%d received=%d decoded=%d failed=%d acksIgnored=%d dataEvents=%d fragments=%d created=%d kicked=%d\n",
+					numClients,
+					packetsReceived.Load(),
+					packetsDecoded.Load(),
+					packetsFailed.Load(),
+					acksIgnored.Load(),
+					dataEventsEmitted.Load(),
+					fragmentsStored.Load(),
+					clientsCreated.Load(),
+					clientsKicked.Load(),
+				)
+			}
+		}()
+	}
+
 	server.Emit("Listening", nil)
 
 	<-quit
@@ -78,6 +121,23 @@ func (server *Server) listenDatagram(quit chan struct{}) {
 	panic(err)
 }
 
+func packetTypeName(t uint8) string {
+	switch t {
+	case SynPacket:
+		return "SYN"
+	case ConnectPacket:
+		return "CONNECT"
+	case DataPacket:
+		return "DATA"
+	case DisconnectPacket:
+		return "DISCONNECT"
+	case PingPacket:
+		return "PING"
+	default:
+		return fmt.Sprintf("UNKNOWN(%d)", t)
+	}
+}
+
 func (server *Server) handleSocketMessage() error {
 	var buffer [64000]byte
 
@@ -89,19 +149,26 @@ func (server *Server) handleSocketMessage() error {
 		return err
 	}
 
+	packetsReceived.Add(1)
 	discriminator := addr.String()
 
 	server.clientMutex.Lock()
+	isNew := false
 	if _, ok := server.clients[discriminator]; !ok {
 		server.clients[discriminator] = NewClient(addr, server)
+		isNew = true
+		clientsCreated.Add(1)
 	}
 	client := server.clients[discriminator]
 	server.clientMutex.Unlock()
 
+	if isNew && debugNetwork {
+		log.Printf("[DIAG] New client created: %s\n", discriminator)
+	}
+
 	data := buffer[0:length]
 
 	// Serialize packet decode + event dispatch per-client to prevent racing
-	// please fix it :despair:
 	client.LockProcessing()
 	defer client.UnlockProcessing()
 
@@ -110,12 +177,26 @@ func (server *Server) handleSocketMessage() error {
 	packet, err = NewPacketV0(client, data)
 
 	if err != nil {
-		log.Println(err)
+		packetsFailed.Add(1)
+		if debugNetwork {
+			log.Printf("[DIAG] Packet decode failed from %s (len=%d): %v\n", discriminator, length, err)
+		} else {
+			log.Println(err)
+		}
 		return nil
 	}
 
+	packetsDecoded.Add(1)
+
 	if packet.HasFlag(FlagAck) {
+		acksIgnored.Add(1)
 		return nil
+	}
+
+	if debugNetwork {
+		log.Printf("[DIAG] %s from %s seq=%d frag=%d flags=0x%02X len=%d\n",
+			packetTypeName(packet.Type()), discriminator,
+			packet.SequenceID(), packet.FragmentID(), packet.Flags(), length)
 	}
 
 	if packet.HasFlag(FlagNeedsAck) {
@@ -135,9 +216,24 @@ func (server *Server) handleSocketMessage() error {
 	case DataPacket:
 		// only emit Data event for complete packets, not partial fragments
 		if !packet.IsPartialFragment() {
+			dataEventsEmitted.Add(1)
+			if debugNetwork {
+				request := packet.RMCRequest()
+				log.Printf("[DIAG] DATA complete from %s: protocol=%d method=%d callID=%d paramLen=%d\n",
+					discriminator, request.ProtocolID(), request.MethodID(), request.CallID(), len(request.Parameters()))
+			}
 			server.Emit("Data", packet)
+		} else {
+			fragmentsStored.Add(1)
+			if debugNetwork {
+				log.Printf("[DIAG] DATA fragment stored from %s: fragID=%d seq=%d\n",
+					discriminator, packet.FragmentID(), packet.SequenceID())
+			}
 		}
 	case DisconnectPacket:
+		if debugNetwork {
+			log.Printf("[DIAG] Client disconnecting: %s (username=%s)\n", discriminator, client.Username)
+		}
 		server.Kick(client)
 		server.Emit("Disconnect", packet)
 	case PingPacket:
@@ -202,7 +298,13 @@ func (server *Server) Kick(client *Client) {
 	server.clientMutex.Lock()
 	if _, ok := server.clients[discriminator]; ok {
 		delete(server.clients, discriminator)
-		log.Println("Kicked user", discriminator)
+		clientsKicked.Add(1)
+		if debugNetwork {
+			log.Printf("[DIAG] Kicked user %s (username=%s, PID=%d, RVCID=%d)\n",
+				discriminator, client.Username, client.PlayerID(), client.ConnectionID())
+		} else {
+			log.Println("Kicked user", discriminator)
+		}
 	}
 	server.clientMutex.Unlock()
 }
@@ -392,6 +494,11 @@ func (server *Server) Send(packet PacketInterface) {
 	data := packet.Payload()
 	dataLength := len(data)
 	fragments := int(math.Ceil(float64(dataLength) / float64(server.fragmentSize)))
+
+	if debugNetwork && fragments == 0 && dataLength == 0 {
+		log.Printf("[DIAG] Send called with empty payload for %s type=%s\n",
+			packet.Sender().Address().String(), packetTypeName(packet.Type()))
+	}
 
 	var fragmentID uint8 = 1
 	for i := 0; i < fragments; i++ {

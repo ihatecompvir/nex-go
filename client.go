@@ -2,6 +2,7 @@ package nex
 
 import (
 	"crypto/rc4"
+	"log"
 	"net"
 	"sync"
 )
@@ -181,14 +182,25 @@ func (client *Client) AssembleFragments(finalPayload []byte) []byte {
 		}
 	}
 
+	if debugNetwork {
+		log.Printf("[DIAG] Assembling %d fragments (max fragID=%d) + final payload (%d bytes) for %s\n",
+			len(client.fragmentedPayloads), maxFragmentID, len(finalPayload), client.Address().String())
+	}
+
 	// Assemble fragments in order: 1, 2, 3, ..., maxFragmentID, then the final payload (fragmentID 0)
 	var assembled []byte
 	for i := uint8(1); i <= maxFragmentID; i++ {
 		if fragment, ok := client.fragmentedPayloads[i]; ok {
 			assembled = append(assembled, fragment...)
+		} else if debugNetwork {
+			log.Printf("[DIAG] WARNING: Missing fragment %d during assembly for %s\n", i, client.Address().String())
 		}
 	}
 	assembled = append(assembled, finalPayload...)
+
+	if debugNetwork {
+		log.Printf("[DIAG] Assembled total: %d bytes for %s\n", len(assembled), client.Address().String())
+	}
 
 	// Clear the fragment buffer
 	client.fragmentedPayloads = make(map[uint8][]byte)

@@ -138,7 +138,13 @@ func (packet *PacketV0) Decode() error {
 	calculatedChecksum := packet.calculateChecksum(packetBody[:len(packetBody)-checksumSize])
 
 	if calculatedChecksum != packet.Checksum() {
-		log.Println("[ERROR] Calculated checksum did not match")
+		if debugNetwork {
+			log.Printf("[DIAG] Checksum mismatch from %s: calculated=0x%X received=0x%X type=%d seq=%d len=%d\n",
+				packet.Sender().Address().String(), calculatedChecksum, packet.Checksum(),
+				packet.Type(), packet.SequenceID(), len(packetBody))
+		} else {
+			log.Println("[ERROR] Calculated checksum did not match")
+		}
 	}
 
 	return nil
