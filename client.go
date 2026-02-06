@@ -43,7 +43,7 @@ type Client struct {
 func (client *Client) Reset() {
 	client.sequenceIDIn = NewCounter(0)
 	client.sequenceIDOut = NewCounter(0)
-	client.dispatchQueue = NewPacketDispatchQueue(0)
+	client.dispatchQueue = NewPacketDispatchQueue(2)
 	client.incomingFragmentBuffer = nil
 
 	client.UpdateAccessKey(client.Server().AccessKey())

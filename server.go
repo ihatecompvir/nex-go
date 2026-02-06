@@ -203,69 +203,86 @@ func (server *Server) handleSocketMessage() error {
 			packet.SequenceID(), packet.FragmentID(), packet.Flags(), length)
 	}
 
+	// Handle ACKs immediately
 	if packet.HasFlag(FlagNeedsAck) {
 		if packet.Type() != ConnectPacket || (packet.Type() == ConnectPacket && len(packet.Payload()) <= 0) {
 			go server.AcknowledgePacket(packet, nil)
 		}
 	}
 
-	// Push the packet into the client's dispatch queue for ordered processing
-	client.DispatchQueue().Queue(packet)
+	if packet.Type() == SynPacket {
+		client.Reset()
+		server.Emit("Syn", packet)
+		return nil
+	}
 
-	// Process all consecutively available packets in sequence order
-	for queued := client.DispatchQueue().GetNextToDispatch(); queued != nil; queued = client.DispatchQueue().GetNextToDispatch() {
-		switch queued.Type() {
-		case SynPacket:
-			client.Reset()
-			server.Emit("Syn", queued)
-		case ConnectPacket:
-			queued.Sender().SetClientConnectionSignature(queued.ConnectionSignature())
-			server.Emit("Connect", queued)
-		case DataPacket:
-			// Append this packet's payload to the fragment buffer
-			client.AppendIncomingFragment(queued.Payload())
+	if packet.Type() == ConnectPacket {
+		packet.Sender().SetClientConnectionSignature(packet.ConnectionSignature())
+		server.Emit("Connect", packet)
+		return nil
+	}
 
-			if queued.FragmentID() == 0 {
-				// FragmentID 0 means this is the last (or only) fragment
-				assembledPayload := client.IncomingFragmentBuffer()
+	if packet.Type() == PingPacket && !packet.HasFlag(FlagReliable) {
+		server.SendPing(client)
+		server.Emit("Ping", packet)
+		return nil
+	}
 
-				request, rmcErr := NewRMCRequest(assembledPayload)
-				if rmcErr != nil {
-					log.Println("[PRUDPv0] Error parsing RMC request: " + rmcErr.Error())
-				} else {
-					queued.SetPayload(assembledPayload)
-					queued.SetRMCRequest(request)
+	processDataPacket := func(p PacketInterface) {
+		client.AppendIncomingFragment(p.Payload())
 
-					dataEventsEmitted.Add(1)
-					if debugNetwork.Load() {
-						log.Printf("[DIAG] DATA complete from %s: protocol=%d method=%d callID=%d paramLen=%d\n",
-							discriminator, request.ProtocolID(), request.MethodID(), request.CallID(), len(request.Parameters()))
-					}
-					server.Emit("Data", queued)
-				}
+		if p.FragmentID() == 0 {
+			assembledPayload := client.IncomingFragmentBuffer()
+			request, rmcErr := NewRMCRequest(assembledPayload)
 
-				// Clear the fragment buffer for the next message
-				client.SetIncomingFragmentBuffer(nil)
+			if rmcErr != nil {
+				log.Println("[PRUDPv0] Error parsing RMC request: " + rmcErr.Error())
 			} else {
-				fragmentsStored.Add(1)
-				if debugNetwork.Load() {
-					log.Printf("[DIAG] DATA fragment queued from %s: fragID=%d seq=%d\n",
-						discriminator, queued.FragmentID(), queued.SequenceID())
-				}
-			}
-		case DisconnectPacket:
-			if debugNetwork.Load() {
-				log.Printf("[DIAG] Client disconnecting: %s (username=%s)\n", discriminator, client.Username)
-			}
-			server.Kick(client)
-			server.Emit("Disconnect", queued)
-		case PingPacket:
-			server.SendPing(client)
-			server.Emit("Ping", queued)
-		}
+				p.SetPayload(assembledPayload)
+				p.SetRMCRequest(request)
 
-		server.Emit("Packet", queued)
-		client.DispatchQueue().Dispatched(queued)
+				dataEventsEmitted.Add(1)
+				if debugNetwork.Load() {
+					log.Printf("[DIAG] DATA complete from %s: callID=%d\n", discriminator, request.CallID())
+				}
+				server.Emit("Data", p)
+			}
+			client.SetIncomingFragmentBuffer(nil)
+		} else {
+			fragmentsStored.Add(1)
+		}
+	}
+
+	if packet.HasFlag(FlagReliable) {
+		client.DispatchQueue().Queue(packet)
+
+		for queued := client.DispatchQueue().GetNextToDispatch(); queued != nil; queued = client.DispatchQueue().GetNextToDispatch() {
+
+			switch queued.Type() {
+			case DataPacket:
+				processDataPacket(queued)
+
+			case DisconnectPacket:
+				if debugNetwork.Load() {
+					log.Printf("[DIAG] Client disconnecting: %s\n", discriminator)
+				}
+				server.Kick(client)
+				server.Emit("Disconnect", queued)
+
+			case PingPacket:
+				server.SendPing(client)
+				server.Emit("Ping", queued)
+			}
+
+			server.Emit("Packet", queued)
+
+			client.DispatchQueue().Dispatched(queued)
+		}
+	} else {
+		if packet.Type() == DataPacket {
+			processDataPacket(packet)
+			server.Emit("Packet", packet)
+		}
 	}
 
 	return nil
