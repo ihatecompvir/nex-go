@@ -29,8 +29,8 @@ type Client struct {
 	platform                  int      // the platform the client is connecting from
 	machineID                 int      // the machine ID of the client
 
-	// this enables per-client incoming fragmented packet support
-	fragmentMutex      sync.Mutex
+	// this serializes packet processing per-client to prevent fragment reassembly races
+	processingMutex    sync.Mutex
 	fragmentedPayloads map[uint8][]byte // fragmentID -> payload data
 }
 
@@ -151,14 +151,14 @@ func (client *Client) ExternalStationURL() string {
 	return client.externalStationURL
 }
 
-// LockFragmentState locks the fragment mutex for thread-safe fragment reassembly
-func (client *Client) LockFragmentState() {
-	client.fragmentMutex.Lock()
+// LockProcessing locks the per-client processing mutex
+func (client *Client) LockProcessing() {
+	client.processingMutex.Lock()
 }
 
-// UnlockFragmentState unlocks the fragment mutex
-func (client *Client) UnlockFragmentState() {
-	client.fragmentMutex.Unlock()
+// UnlockProcessing unlocks the per-client processing mutex
+func (client *Client) UnlockProcessing() {
+	client.processingMutex.Unlock()
 }
 
 // StoreFragment stores a fragment payload by its fragment ID (must hold lock)

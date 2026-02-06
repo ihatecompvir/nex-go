@@ -100,6 +100,11 @@ func (server *Server) handleSocketMessage() error {
 
 	data := buffer[0:length]
 
+	// Serialize packet decode + event dispatch per-client to prevent racing
+	// please fix it :despair:
+	client.LockProcessing()
+	defer client.UnlockProcessing()
+
 	var packet PacketInterface
 
 	packet, err = NewPacketV0(client, data)
